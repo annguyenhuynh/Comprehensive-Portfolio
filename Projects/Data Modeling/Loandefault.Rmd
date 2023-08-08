@@ -1,0 +1,305 @@
+---
+title: "Data Modeling"
+author: "An Huynh"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+## Business Problem
+* The bank has experienced record levels of customers defaulting on their loans in the past couple of years and this is leading to huge financial losses.
+
+* The company is looking to see if it can determine the factors that lead to loan default and whether it can predict if a customer will eventually default on their loan. The goal is to become better at identifying customers at risk of defaulting on their loans to minimize financial losses.
+
+* The objective of this project is to explore the factors that lead to loan default and develop a machine learning algorithm that will predict the likelihood of an applicant defaulting on their loan in the future.
+
+## Approaches
+* Since this problem invovlves classification(default/not default), and data are labeled, I will use supervised ML models. The three models will be used are - Logisitic Regression, Random Forest, and Linear Discriminant Analysis.
+* Three metrics that will be used to evaluate the performance of each model are - confusion matrix, f1 score, and ROC_AUC scores. Based on these 3 metrics and the ROC curve, we will select the best model for this business scenario. 
+
+## Model 1: Logistic Regression
+
+```{r}
+# Load packages
+library(tidyverse)
+library(dplyr)
+library(tidymodels)
+library(skimr)
+library(rpart.plot)
+library(vip)
+```
+## Load data
+```{r}
+loan_df <- read_rds('/Users/AnhHuynh/Documents/SUMMER 2023/MIS 431/Final Project/loan_data.rds')
+skim(loan_df)
+```
+## Split data
+```{r}
+set.seed(345)
+loan_split <- initial_split(loan_df,prop=0.8,strata = loan_default)
+loan_train <- training(loan_split)
+loan_test <- testing(loan_split)
+```
+
+## Feature Engineering
+```{r}
+loan_recipe <- recipe(loan_default ~., data = loan_train) %>%
+  step_YeoJohnson(all_numeric(), -all_outcomes()) %>%
+  step_normalize(all_numeric(), -all_outcomes()) %>%
+  step_dummy(all_nominal(), -all_outcomes())
+```
+
+## Check feature engineering using 'prep' and 'bake'
+```{r}
+loan_recipe %>%
+  prep() %>%
+  bake(new_data = loan_train)
+```
+## Define model
+```{r}
+logistic_model <- logistic_reg() %>%
+  set_engine('glm') %>%
+  set_mode('classification')
+
+logistic_model
+```
+## Create workflow
+```{r}
+loan_wf <- workflow() %>%
+  add_model(logistic_model) %>%
+  add_recipe(loan_recipe)
+```
+
+## Fit model
+```{r}
+loan_logistic_fit <- loan_wf %>%
+  fit(data = loan_train)
+```
+
+## Explore Very Important Predictor (VIP) from our training data
+```{r}
+#First, we need to extract the trained model from our workflow
+loan_trained_model <- loan_logistic_fit %>%
+  extract_fit_parsnip()
+loan_trained_model
+```
+## Variable importance
+```{r}
+# Plot VIP 
+vip(loan_trained_model)
+```
+## Evaluate performance
+#### To evaluate performance, we will test the training model using the testing data
+```{r}
+# Prediction catetgories
+prediction_categories <- predict(loan_logistic_fit,new_data = loan_test)
+prediction_categories
+```
+```{r}
+# Predicting probabilities
+prediction_probs <- predict(loan_logistic_fit,new_data = loan_test, type = 'prob')
+prediction_probs
+```
+## Combining the results above with the true response variable values in testing dataset
+```{r}
+#Combine
+test_results <- loan_test %>%
+  select(loan_default) %>%
+  bind_cols(prediction_categories) %>%
+  bind_cols(prediction_probs)
+
+test_results
+```
+## Exploring Performance metrics
+```{r}
+# Confusion matrix
+conf_mat(test_results,truth = loan_default,estimate = .pred_class)
+```
+```{r}
+# F1 score
+f_meas(test_results,truth = loan_default,estimate=.pred_class)
+```
+```{r}
+# ROC curve
+autoplot(roc_curve(test_results,loan_default,.pred_yes))
+```
+```{r}
+# Area under the ROC
+roc_auc(test_results,loan_default, .pred_yes)
+```
+## Automating the process
+#### last_fit() method takes workflow object as first argument, a data split object as second. It'l train the model on the training and provide predictions and calculate motrics on the test set.
+```{r}
+last_fit_model <- loan_wf %>%
+  last_fit(split = loan_split)
+```
+```{r}
+# Collect metrics
+last_fit_model %>% collect_metrics()
+```
+```{r}
+# Collect predictions
+last_fit_results <- last_fit_model %>%
+  collect_predictions()
+last_fit_results
+```
+```{r}
+#ROC curve
+autoplot(roc_curve(last_fit_results,loan_default,.pred_yes))
+```
+## Model 2: Random Forest
+
+## Define model
+```{r}
+rf_model <- rand_forest(mtry=tune(),trees = tune(),min_n=tune())%>%
+  set_engine(engine = 'ranger',importance='impurity')%>%
+  set_mode('classification')
+rf_model
+```
+## Create workflow
+```{r}
+rf_wf <- workflow()%>%
+  add_model(rf_model)%>%
+  add_recipe(loan_recipe)
+```
+## Create folds
+```{r}
+set.seed(345)
+loan_folds <-vfold_cv(loan_train,v=5)
+loan_folds
+```
+
+## Hyperparameter Tuning
+```{r}
+set.seed(345)
+rf_grid <- grid_random(mtry() %>%
+  range_set(c(3,18)),
+  trees(),
+  min_n(),
+  size=10
+)
+rf_grid
+```
+```{r}
+# Tune workflow
+set.seed(345)
+rf_tuning <- rf_wf %>%
+  tune_grid(resamples=loan_folds,grid = rf_grid)
+```
+## Selecting the top 5 models based on roc_auc metric
+```{r}
+rf_tuning%>%
+  show_best('roc_auc')
+```
+```{r}
+best_rf <- rf_tuning %>%
+  select_best(metric = 'roc_auc')
+best_rf
+```
+## Finalize workflow
+```{r}
+final_rf_wf <- rf_wf %>%
+  finalize_workflow(best_rf)
+final_rf_wf
+```
+## Visualize results
+```{r}
+## Fit model
+rf_wf_fit <- final_rf_wf %>%
+  fit(loan_train)
+```
+```{r}
+## Extract trained model
+rf_fit <- rf_wf_fit%>%
+  extract_fit_parsnip()
+```
+```{r}
+vip(rf_fit)
+```
+## Train and evaluate with last_fit()
+```{r}
+rf_last_fit <- final_rf_wf %>%
+  last_fit(loan_split)
+```
+```{r}
+rf_last_fit %>% 
+  collect_metrics()
+```
+```{r}
+rf_predictions <- rf_last_fit %>%
+  collect_predictions()
+rf_predictions
+```
+```{r}
+conf_mat(rf_predictions,loan_default,.pred_class)
+```
+## ROC CURVE
+```{r}
+autoplot(roc_curve(rf_predictions,loan_default,.pred_yes))
+```
+
+## Model 3: Linear Discriminant Analysis
+```{r}
+library(MASS)
+library(caret)
+```
+## Define model
+```{r}
+library('klaR')
+lda <- discrim_regularized(frac_common_cov = 1) %>%
+  set_engine('klaR') %>%
+  set_mode('classification')
+```
+## Create workflow
+```{r}
+library(discrim)
+lda_wf <- workflow() %>%
+  add_model(lda) %>%
+  add_recipe(loan_recipe)
+
+lda_wf
+```
+## Train and evaluate with last_fit()
+```{r}
+lda_fit_wf <- lda_wf %>%
+  last_fit(split = loan_split)
+```
+## Collect metrics
+```{r}
+lda_fit_wf %>% collect_metrics()
+```
+## Collect predictions
+```{r}
+lda_predictions <-
+  lda_fit_wf %>% collect_predictions()
+lda_predictions
+```
+```{r}
+  autoplot(roc_curve(lda_predictions,loan_default,.pred_yes))
+```
+## Confusion matrix
+```{r}
+conf_mat(lda_predictions,loan_default,.pred_class)
+```
+## F1 score
+```{r}
+f_meas(lda_predictions,loan_default,.pred_class)
+```
+## Appendix
+```{r, ref.label=knitr::all_labels(),echo=TRUE,eval=FALSE}
+```
+## Conclusion
+* Logistic regression and LDA has exactly the same F1 score, area under the ROC curve. The accuracy score of LDA is 0.001 more than the logistic regression model. 
+* Either of the model can be used to detect the likelihood of loan default. However, logistic regression maybe the better model for this business problem as it identifies top 4 factors explaining the potential of loan default. As we know the top elements leading to loan default, we can make some modifications to reduce the risk of defaulting. Some recommendations are:
+    * Shorten the term of loan 
+    * Require higher installment to reduce periodic payment
+    * May consider lower loan amount to prevent financial losses
