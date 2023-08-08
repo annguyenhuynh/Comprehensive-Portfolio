@@ -1,6 +1,7 @@
 # Comprehensive Portfolio
 This portfolio comprises the four projects a business/data analyst needs to have - data cleansing and transforming, exploratory data analysis, data visualization, and modeling.
 1. Data Cleasing
+   
 * The data used in this project is data science job postings with 14 variables and 672 observations. The very first step is to load    data using pandas. This project is completed with instructions.
 
 2. Exploratory Data Analysis (EDA)
