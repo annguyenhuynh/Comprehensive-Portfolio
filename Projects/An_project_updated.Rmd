@@ -1,0 +1,244 @@
+---
+title: "Midterm Project"
+author: "An Huynh"
+date: "June 11th, 2023"
+output:
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+# 1. Introduction
+**Problem**: Before the pandemic, the company experienced an increasing rate of employee departures. Employee attrition is a challenge to a tech company as certain skills are needed to ensure quality products and smooth operations. Hence, we are looking at multiple factors from the HR dataset and attempting to find the correlation between those factors and the leaving company status to discover which ones contribute to employees' quitting. 
+
+**Summary**: This dataset has 13 variables and 1100 observations. The variables consist of leaving status, salary, commuting distance, job levels, departments, weekly hours, frequency of business travel, years at the company, years since promotion, job satisfaction, performance ratings, and marital status. 
+
+**Analyses summary**: In this analysis report, we examine the relationship between leaving and six other factors - salary, commuting distance, job satisfaction, performance ratings, weekly hours, and frequency of business travel. Among the six factors, salary, performance ratings, and working hours per week are strong indicators for leaving. Interestingly, the data also show that sales and product development departments have the highest turnover rates. 
+
+**Methods**: This report comprise of summary tables and data visualizations. Main packages used in this project include:
+'readxl' to import .xlsx file into R; 'dplyr' for pipe operating; 'ggplot2' for data visualization; and 'skimr' to skim through data.
+
+# 2. Data and Model
+```{r}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(skimr)
+
+employees <- read_xlsx('/Users/AnhHuynh/Documents/SUMMER 2023/MIS 431/Mid-term project/Employee Data Formatted - MIS 431 Summer 2023 (1100 Records) f.xlsx')
+
+employees <- employees %>%
+  mutate_if(is.character, as.factor)
+str(employees)
+```
+# Analysis 1
+## Question: Is there a correlation between leaving and salary?
+
+**Answer**: Yes, both summary tables and data visualization show that median salary for those who leave is lower than those who do not. In addition, the boxplot shows that salary of 25% of those who leave are less than $50000 while that figure is roughly $75000 for 25% of those who stay. Seventy-five percent of those who don't leave earn nearly $125000 compared to roughly $100000 of 75% of those who leave. 
+```{r fig.align="center", echo = FALSE,fig.width = 8}
+# Summary table
+employees %>%
+  group_by(left_company) %>%
+  summarize(employee_counts = n(),
+            min_salary = min(salary),
+            median_salary = median(salary),
+            max_salary = max(salary),
+            less_60= sum(salary <= 60000))
+            
+      
+# Data visualization
+ggplot(employees, aes(x=left_company,y=salary)) +
+  geom_boxplot() +
+  labs(title = "Salary distribution by Leave status",
+       x = "Leaving status", y="Salary") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+***Summary of results***: Statistics and data visualizations indicate that salary is a reason for leaving. The 25th, 50th and 75th salary percentiles are lower for those who leave compared to those who don't. Hence, it is recommended that managers review payment structure to ensure fairness and equality among emmployees. 
+
+
+# Analysis 2
+## Question: Is commutting distance a reason for leaving?
+
+**Answer**: Distance is not an indicator of leaving. The table shows that the minimum and maximum commuting distance are the same among those who leave and do not leave. The average distance is about 1 mile different between the two groups. 
+```{r}
+# Summary table
+factor2 <- employees %>%
+  group_by(left_company) %>%
+  summarize (average_dist = mean(miles_from_home),
+             min_dist = min(miles_from_home),
+             max_dist = max(miles_from_home))
+factor2
+#Data visualization
+ggplot(factor2, aes(x=left_company,y=average_dist)) + 
+  geom_col() +
+  coord_flip() +
+  labs (title = "Distance and Leave", x="Leaving status", y = "Average distance") +
+  theme(plot.title = element_text(hjust=0.5))
+```
+***Summary of result***: Since the average distance between the two groups is just a mile difference, we can conclude that commuting distance is not a reason for leaving.  Therefore, managers can keep hiring people living far from office as long as they are willing to commute. 
+
+# Analysis 3
+## Question: Do people leave because of low job satisfaction?
+
+**Answer**: Yes, low job satisfaction is a reason for leaving. In particular, for those who leave, low job satisfaction accounts for 27%, while this figure is just 18% for those who stay. In addition, the difference in percentage for 'very high' job satisfacion is 12.73% between employees who leave and those who don't. 
+```{r}
+#Summary table
+employees %>%
+  group_by(left_company, job_satisfaction) %>%
+  summarize(n=n()) %>%
+  arrange(job_satisfaction)
+
+#Data visuaization
+ggplot(employees, aes(x=left_company, fill=left_company)) +
+  geom_bar()+
+  facet_grid(.~job_satisfaction) + 
+  labs(title = "Job Satisfaction is an indicator for leaving",
+       x="Leaving status", y = "Number of employees") +
+  theme(plot.title = element_text(hjust=0.5))
+```
+***Summary of result***: There is not much difference in the middle level, 'Medium' job satisfaction, but there are extremes on the two ends of this ordinal category. We can conclude that employees who have 'Very high' job satisfaction tend to stay and those who have 'Low' job satisfaction tend to leave. However, since the data set does not include factors related to job satisfaction, we cannot make any further conclusion. More research needs to be done to find out which factors impact job satisfaction. Is it working environment, benefits, management, coworkers or anything else. 
+  
+# Analysis 4
+## Question: Which department has the highest rate of leaving?
+
+**Answers**: Sales and Product Development departments have the highest turnover rate - 29%. Research department has the lowest turnover rate, only 4%.
+```{r}
+factor4 <-employees%>%
+  group_by(department,left_company) %>%
+  summarize(count = n()) %>%
+  mutate(percent = round(count/sum(count),2)*100, "%") %>%
+  arrange(-percent)
+factor4
+attach(employees)
+par(mfrow=c(2,3))
+count1 <- table(employees$left_company[department=="Finance and Operations"])
+lb1<- paste(c('No', 'Yes'),round(count1/sum(count1),2)*100,'%')
+pie(count1, labels = lb1,xlab="Finance and Operations")
+count2 <-table(employees$left_company[department == "IT and Analytics"])
+lb2 <- paste(c('No','Yes'),round(count2/sum(count2),2)*100, '%')
+pie(count2, labels = lb2, xlab="IT and Analytics")
+mtext(side = 3, text = "Leaving rate by department")
+count3 <- table(employees$left_company[department=="Research"])
+lb3 <- paste(c('No','Yes'), round(count3/sum(count3),2)*100, '%')
+pie(count3, labels = lb3, xlab="Research")
+count4 <- table(employees$left_company[department == "Marketing"])
+lb4 <- paste(c('No','Yes'), round(count4/sum(count4),2)*100, '%')
+pie(count4, labels = lb4, xlab="Marketing")
+count5 <- table(employees$left_company[department == "Product Development"])
+lb5 <- paste(c('No','Yes'), round(count5/sum(count5),2)*100, '%')
+pie(count5, labels = lb5, xlab="Product Development")
+count6 <- table(employees$left_company[department == "Sales"])
+lb6 <- paste(c('No','Yes'), round(count6/sum(count6),2)*100, '%')
+pie(count6, labels = lb6, xlab="Sales")
+```
+***Summary of results***: Pie charts show the percentage of leaving for each department. Sales and Product development departments have the highest leaving rate. One possible explanation is that commission or compensation is insufficient compared to workload. There may be other reasons requiring further investigation from department managers and top leaders to reduce attrition rates from these two departments. 
+
+# Analysis 5
+## Question: What is the relationship between performance rating and leaving status?
+
+**Answer**: Employees who leave tend to have low to medium performance, and those who stay have medium to very high performance. 
+```{r}
+# Summary table
+factor5_1 <- employees %>%
+  filter(left_company=="Yes") %>%
+  group_by(performance_rating) %>%
+  summarize(n_employee = n()) %>%
+  arrange(performance_rating)
+factor5_1
+
+factor5_2 <- employees %>%
+  filter(left_company=="No") %>%
+  group_by(performance_rating) %>%
+  summarize(n_employee = n()) %>%
+  arrange(performance_rating)
+factor5_2
+```
+***Summary of results***: Comparing the stats between two summary tables, the percentage of employees whose performance is beyond expectations and exceptional is two and twenty times higher for those who stay compared to those who leave. Besides, only 1.2% of those who don't leave perform poorly compared to 4.2% of those who leave. Retaining too many low-performance workers can impede the growth of the company in general. However, more investigation needs to be executed to identify why employees perform not so well, and what managers can do to help. Some may need more training and coaching to excel in their works. Identifying current employees' problems and help them advance will save the company money compared to recruiting and training new employees from scratch. 
+  
+# Analysis 6
+## Question : Is number of hours working a reason for leaving?
+
+**Answer**: Yes, long weekly hours is a strong indicator for leaving. 
+```{r fig.align="center", echo = FALSE,fig.width = 8}
+# Summary table
+factor6 <- employees %>%
+  group_by(left_company) %>%
+  summarize(avg_hr = mean(weekly_hours),
+            min_hr = min(weekly_hours),
+            max_hr = max(weekly_hours))
+factor6
+
+# Data visualization
+ggplot(employees, aes(x=weekly_hours, fill=left_company)) +
+  geom_histogram(aes(y=after_stat(density)),color="white",bins = 20) +
+  facet_wrap(~left_company, nrow = 2) +
+  labs(x="Weekly hours", y="Proportion", title = "Weekly hours vs. Leaving status") +
+    theme(plot.title = element_text(hjust=0.5))
+```
+***Summary of result***: Statistics and the histograms strongly indicate that long working hours contribute to the reason for leaving. Average, minimum, and maximum working hours of those who leave are approximately 10 hours more than those who don't. Combined this result with the salary analysis, we can say that the employees who leave work longer hours for lower salary. These combined factors can negatively impact their job performance. To this point, managers can see there are many red flags within the business operations. 
+
+# Analysis 7
+## Question: Is business travel frequency contribute to leaving?
+
+**Answer**:  This statistics alone may not reveal much about reason for leaving. However, when combined with other factors analyzed above, frequency of business travel do contribute to reasons for leaving. 
+```{r fig.align="center", echo = FALSE,fig.width = 8}
+#Summary table
+factor6 <- employees %>%
+  group_by(left_company,business_travel) %>%
+  summarize(n_employee = n()) %>%
+  arrange(business_travel)
+factor6
+
+# Data visualization
+ggplot(factor6, aes(x=left_company,y=n_employee, fill=business_travel)) +
+  geom_bar(position = "fill", stat = "identity") + 
+  labs(title = "Business travel vs. Leaving status",
+       x = "Leaving Status",
+       y = "Proportion") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+***Summary of result***: Statistics and stacked bar chart point out that employees who leave traveled more frequently than those who didn't. Frequent business travel may impact the work-life balance in a negative way. Remember, the people who quit are those who work longer hours for lower salary, and it turns out they have more business trips than those who stay. 
+
+# Analysis 8
+## Question: What is the distribution of salary among departments? 
+```{r fig.align="center", echo = FALSE,fig.width = 16}
+#Summary table
+factor7 <- employees %>%
+  group_by(department) %>%
+  summarize(avg_salary = mean(salary),
+            lowest_salary = min(salary),
+            highest_salary = max(salary))
+factor7
+
+#Data visualization
+ggplot(employees, aes(x=salary, fill=left_company)) +
+  geom_histogram(bins = 50) +
+  facet_grid(.~department) +
+  labs(title = "Salary distribution",
+       x = "Salary") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+***Summary of result***: On average, Sales department has the lowest salary, followed by Product Development department. Sales employees also earn the lowest among the minimum salary group and Product Development employees earn the lowest among the maximum salary group. These salary statistics match the leaving rates for these two departments analyzed above. 
+
+  
+# 3. Conclusion
++ In conclusion, the combination of salary, job satisfaction, performance ratings, weekly hours and frequency of business travel contribute to reasons for leaving. 
++ A pattern detected from this analysis is that employees who left worked longer hours, traveled more frequently, but had lower salary. Those who leave work 10 hours more weekly and travel more frequenty while earning about $30000 less than those who don't. The combination of these three factors may explain for low job satisfaction and low performance rating. It's no surprise that those who stuck in this cycle leave the company eventually.
++ The two departments that witness high turnover rates are Sales and Product Development. Employees from these two departments also earn the lowest among the lowest earning group and the highest earning group, respectively. Reasons can't be detected from the dataset, but one assumption is that the commission or compensation is insufficient. 
++ Managers at all level need to conduct a thorough internal investigation to find out the loopholes in the business structure and have specific strategies to fix them to reduce attrition rates.
+
+# 4. Appendix
+```{r, ref.label=knitr::all_labels(),echo=TRUE,eval=FALSE}
+```
+
+
+
